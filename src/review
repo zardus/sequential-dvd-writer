@@ -1,0 +1,177 @@
+#!/usr/bin/perl
+
+do 'wtfuncs.pl';
+
+my $to = "/tmp/dvdstructure";
+my $tdir = shift @ARGV;
+my $mtype = shift @ARGV;
+my $maxfiles = shift @ARGV;
+
+my $num = `ls -d $to/Disk* | wc -l`;
+chomp $num;
+
+my $view = "overview";
+
+my $header = "Target: $tdir\nMedia: $mtype\nDisk file limit: $maxfiles";
+my $title = "$header\nNow viewing: $view";
+
+my $startdir = "/tmp/dvdstructure";
+my $stoptag;
+my $dir = $startdir;
+
+sub burndisk
+{
+	my $cur = shift @_;
+	my $total = shift @_;
+	my $target = shift @_;
+
+	my $contents =<<END;
+`find "/tmp/dvdstructure/Disk $cur" -type f -follow -printf "%P\n" | sort`
+END
+
+	my $text =<<END;
+To burn disk $cur of $total, insert a blank disk capable of
+holding `du -smL "/tmp/dvdstructure/Disk $cur" | cut -d\  -f1` megabytes and hit "Yes".
+
+The following will then be burned:
+
+$contents
+END
+
+	whiptail("--title \"Ready to Burn\" --yesno \"$text\" 0 0", 1);
+
+	return if ($? == 256);
+
+	# ensure that we have DMA on and unmount the CD in case we are dealing with supermount
+	`hdparm -c1 -d1 -k1 -u1 /dev/hdc`;
+	`umount /media/cdrom`;
+
+	# burn the disk
+	print `growisofs -Z /dev/dvd -R -J -f "/tmp/dvdstructure/Disk $cur" >&2`;
+
+	# reload it several times (seems to make verification run better)
+	`eject /dev/dvd`;
+	#`sleep 2`;
+	#`eject -t /dev/dvd`;
+	#`sleep 5`;
+	#`eject /dev/dvd`;
+	#`sleep 2`;
+	#`eject -t /dev/dvd`;
+	
+	my $bad = 0;
+	whiptail("--title \"Verify\" --yesno \"Re-insert tray and hit yes to verify or no to skip verification.\" 0 0", 1);
+
+	if ($? != 256)
+	{
+		# verify
+		print "Will now verify files...\n";
+		print `./verify.sh /media/cdrom "/tmp/dvdstructure/Disk $cur" 2>&1 | tee /tmp/verlog >&2`;
+		$bad = 1 if (-e "/tmp/baddisk");
+	}
+	else
+	{
+		open(VERLOG, ">/tmp/verlog");
+		print VERLOG "Skipped verification.";
+		close VERLOG;
+
+		`mount /media/cdrom`
+	}
+
+	my $burnedfiles = `find "/media/cdrom/" -type f -follow -printf "%P\n" | sort`;
+
+	# and we're done
+	`sleep 1`;
+	`umount /media/cdrom`;
+	`eject /dev/dvd`;
+
+	my $log = `cat /tmp/verlog`;
+
+	if ($bad == 1)
+	{
+		open(TXT, ">/tmp/afterburn");
+		print TXT<<END;
+Disk $cur failed to burn. The verify log was:
+
+$log
+END
+		close TXT;
+
+		whiptail("--title \"Failed Burn\" --exit-label \"Ok\" --tab-correct --tab-len 3 --textbox /tmp/afterburn 0 0", 1);
+		whiptail("--title \"Failed Burn\" --yesno \"Retry burning disk $cur?\n\nContents:\n\n$contents\" 0 0", 1);
+
+		burndisk($cur, $total, $target) if ($? != 256);
+	}
+	else
+	{
+		open(TXT, ">/tmp/afterburn");
+		print TXT<<END;
+The following was burned onto disk $cur:
+
+$burnedfiles
+
+-------------------
+The verify log was:
+
+$log
+END
+		close TXT;
+
+		whiptail("--title \"Success\" --exit-label \"Ok\" --tab-correct --tab-len 3 --textbox /tmp/afterburn 0 0", 1);
+	}
+}
+
+while (1)
+{
+	my $numdisk = "";
+	my $newdir;
+	$title = "$header\nNow viewing: overview";
+
+	if ($dir eq $startdir)
+	{
+		$stoptag = "Burn All ($num disks)";
+		$newdir = browsedir ($startdir, $dir, $stoptag, $title);
+	}
+	elsif ($dir =~ /^$startdir\/Disk (\d+)$/)
+	{
+		my $oldstart = $startdir;
+		my $startdir = $dir;
+		my $curdisk = $1;
+		$newdir = $startdir;
+
+		while ($newdir ne $stoptag && $newdir ne "")
+		{
+			$dir =~ /^$startdir\/(Disk \d+.*)$/;
+			$title = "$header\nNow viewing: $1";
+
+			#$stoptag = "";
+			$stoptag = "Burn disk $curdisk";# if ($dir eq $startdir);
+			$newdir = browsedir ($startdir, $dir, $stoptag, $title, "a");
+
+			$dir = $newdir if (-d $newdir);
+			#if ($newdir eq $stoptag || $newdir eq "")
+		}
+
+		if ($newdir eq "$stoptag")
+		{
+			burndisk($curdisk, $num, $tdir);
+			$dir = $oldstart;
+			$newdir = $dir;
+		}
+		elsif ($newdir eq "")
+		{
+			$dir = $oldstart;
+			$newdir = $dir;
+		}
+	}
+	
+	if ($newdir eq "") { exit; }
+	elsif ($newdir eq $stoptag)
+	{
+		for (my $i = 1; $i <= $num; $i++)
+		{
+			$i = "0$i" if (length($i) == 1);
+			burndisk($i, $num, $tdir);
+		}
+	}
+	else { $dir = $newdir; }
+}

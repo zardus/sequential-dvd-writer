@@ -1,0 +1,55 @@
+#!/usr/bin/perl
+
+do 'wtfuncs.pl';
+
+sub summary
+{
+	my $log = `cat /tmp/copyerror`;
+	$log =~ s/"/\\"/;
+	#$log =~ s/'/\\'/;
+	$log =~ s/`/\\`/;
+
+	whiptail("--title \"Summary\" --msgbox \"The log so far is:\n\n$log\" 0 0", 1);
+}
+
+sub keepgoing
+{
+	whiptail("--title \"Keep going?\" --yesno \"Copy another disk?\" 0 0", 1);
+
+	if ($? == 256)
+	{
+		summary();
+		return 1;
+	}
+
+	return 0;
+}
+
+sub copy_disk
+{
+	my $dest = shift;
+
+	`mount /media/cdrom`;
+	`echo "============= PROCESSING NEW DISK ====================" >> /tmp/copyerror`;
+	`cp -r /media/cdrom/* "$dest" 2>&1 | tee -a /tmp/copyerror`;
+	`echo "================ DONE WITH DISK ======================" >> /tmp/copyerror`;
+	`umount /media/cdrom`;
+	`sleep 3`;
+	`eject /dev/cdrom`;
+}
+
+if ( $#ARGV != 0)
+{
+	print "Usage: dvdread /path/to/destination";
+	exit;
+}
+
+my $dest = shift @ARGV;
+my $done = 0;
+
+do
+{
+	copy_disk($dest);
+	summary();
+	$done = keepgoing();
+} while (!$done);

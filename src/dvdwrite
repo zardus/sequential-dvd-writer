@@ -1,0 +1,32 @@
+#!/usr/bin/perl
+
+do 'wtfuncs.pl';
+
+if ( $#ARGV != 0)
+{
+	print "Usage: dvdwrite /path/to/media";
+	exit;
+}
+
+my $startdir = $ARGV[0];
+my $stoptag = '/-- burn this directory --/';
+my $dir = $startdir;
+my $to = "/tmp/dvdstructure";
+
+`rm -rf $to`;
+
+while (1)
+{
+	my $newdir = browsedir ($startdir, $dir, $stoptag);
+
+	if ($newdir eq "") { exit; }
+	elsif ($newdir eq $stoptag) { last; }
+	else { $dir = $newdir; }
+}
+
+my $mtype = whiptail("--title \"Primary Media Type\" --menu \"Please choose the primary media you will be burning onto.\" 0 0 0 \"DVD\" \"\" \"CD\" \"\"");
+
+my $maxfiles = whiptail("--title \"File Density\" --inputbox \"Please specify the maximum amount of files per disk. Leave blank for unlimited.\" 0 0", 1);
+
+`./makedirs "$dir" "$to" $mtype "$maxfiles" 1`;
+exec "./review $dir $mtype \"$maxfiles\"";

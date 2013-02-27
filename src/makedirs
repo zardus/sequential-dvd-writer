@@ -1,0 +1,84 @@
+#!/usr/bin/perl
+use Cwd;
+
+my $from = shift @ARGV;
+my $to = shift @ARGV;
+my $maxsize = shift @ARGV;
+my $maxfiles = shift @ARGV;
+my $maxcds = shift @ARGV;
+
+#$maxsize = `dvd+rw-mediainfo /dev/dvd | grep Free | awk '{print \$3}' | sed -e "s/2KB/2048/" | bc`;
+#chop $maxsize;
+$maxsize = 4700000000 if ($maxsize =~ /dvd/i);
+$maxsize = 735596544 if ($maxsize =~ /cd/i);
+
+my @fileinfo;
+
+print "Creating disk structure (of $maxsize bytes) from data in $from to $to\n";
+
+if ( -e "/tmp/dvdstructure/order" )
+{
+	@order = `cat /tmp/dvdstructure/order`;
+	chomp @order;
+
+	foreach my $dir (@order)
+	{
+		my $olddir = getcwd();
+		chdir "$from";
+		my @dirfiles = `find "$dir" -follow -type f -printf "%p|||%s\n" | sort`;
+		chomp @dirfiles;
+		chdir "$olddir";
+
+		push (@fileinfo, @dirfiles);
+	}
+}
+else
+{
+	@fileinfo = `find "$from" -follow -type f -printf "%P|||%s\n" | sort`;
+	chomp @fileinfo;
+}
+
+$, = "\n";
+print @fileinfo;
+
+my @sizes;
+my @files;
+my @dirs;
+
+foreach my $entry (@fileinfo)
+{
+	my @fields = split(/\|\|\|/, $entry);
+	push @files, $fields[0];
+	push @sizes, $fields[1];
+}
+
+chomp @files;
+
+my $sizesofar = 0;
+my $disksize = 0;
+my $numfiles = 0;
+my $disknum = 1;
+
+for (my $i = 0; $i <= $#files; $i++)
+{
+	my $file = @files[$i];
+	my $size = @sizes[$i];
+
+	my $dirname = `dirname "$file"`;
+	chomp $dirname;
+	
+	$disksize += $size;
+	$numfiles++;
+
+	if ($disksize > $maxsize || ($maxfiles && $numfiles > $maxfiles))
+	{
+		$disknum++;
+		$disksize = $size;
+		$numfiles = 1;
+	}
+
+	$disknum = "0$disknum" if (length($disknum) == 1);
+
+	`mkdir -p "$to/Disk $disknum/$dirname"`;
+	`ln -s "$from/$file" "$to/Disk $disknum/$file"`;
+}

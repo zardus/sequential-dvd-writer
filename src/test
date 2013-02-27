@@ -1,0 +1,5 @@
+#!/usr/bin/perl
+
+do 'wtfuncs.pl';
+
+whiptail("--title \"Success\" --extra-button --exit-label \"Ok\" --tab-correct --tab-len 3 --textbox /tmp/verlog 0 0", 1);
