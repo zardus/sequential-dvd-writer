@@ -18,3 +18,8 @@ dvdread.sh /path/to/directory
 ```
 
 Enjoy!
+
+License
+=======
+
+I dunno why anyone would want to base any code off of this, but just in case you do, it's licensed under the GPLv3.
