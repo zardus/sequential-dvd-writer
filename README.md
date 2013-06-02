@@ -1,4 +1,4 @@
-dvdwrite
+Sequential DVD Writer
 ========
 
 This is a little UI to help in the creation of DVD archives for organized data. If, for example, you have a lot of Ubuntu ISOs and are trying to burn them off to DVDs, it'll create DVDs of alphabetically consecutive ISOs in the right directories.
